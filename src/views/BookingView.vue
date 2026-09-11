@@ -287,7 +287,7 @@ const handleGlobalKeyDown = (e: KeyboardEvent) => {
 onMounted(async () => {
   window.addEventListener('keydown', handleGlobalKeyDown)
 
-  const slug = (route.params.slug as string) || 'arasan'
+  const slug = (route.params.slug as string)  
   isLoading.value = true
   loadError.value = ''
 
