@@ -12,7 +12,7 @@ const currentStep = ref(1)
 const isLoading = ref(true)
 const loadError = ref('')
 
-// Состояния отправки
+// Состояния отправки заказа
 const isSubmitting = ref(false)
 const isSuccessModalOpen = ref(false)
 
@@ -27,7 +27,7 @@ const isVideoModalOpen = ref(false)
 const isModalVideoMuted = ref(true)
 const modalVideoRef = ref<HTMLVideoElement | null>(null)
 
-// Текстовая база
+// Тексты интерфейса
 const t = {
   ru: {
     whatsapp: 'WhatsApp',
@@ -58,7 +58,6 @@ const t = {
     chooseFromList: 'Выбрать из списка',
     extras: 'Банные принадлежности и товары',
     extrasNote: 'Суммируются в общий чек заказа',
-    noExtras: 'Дополнительные товары не добавлены',
     contacts: 'Контакты гостя',
     namePlaceholder: 'Ваше имя',
     phonePlaceholder: '+7 (7XX) XXX-XX-XX',
@@ -85,7 +84,12 @@ const t = {
     loading: 'Загрузка данных комплекса...',
     notFound: 'Банный комплекс не найден',
     msgHall: 'Зал / Кабинка',
-    none: 'Не выбрано'
+    none: 'Не выбрано',
+    weekdayShort: 'будни',
+    weekendShort: 'вых',
+    tariffLabel: 'Действующий тариф:',
+    tariffWeekend: 'Пт – Вс / Праздники',
+    tariffWeekday: 'Будние дни'
   },
   kz: {
     whatsapp: 'WhatsApp',
@@ -116,7 +120,6 @@ const t = {
     chooseFromList: 'Тізімнен таңдау',
     extras: 'Монша керек-жарақтары мен тауарлар',
     extrasNote: 'Жалпы тапсырыс сомасына қосылады',
-    noExtras: 'Қосымша тауарлар жоқ',
     contacts: 'Қонақ мәліметтері',
     namePlaceholder: 'Атыңыз',
     phonePlaceholder: '+7 (7XX) XXX-XX-XX',
@@ -143,7 +146,12 @@ const t = {
     loading: 'Деректер жүктелуде...',
     notFound: 'Монша кешені табылмады',
     msgHall: 'Зал / Кабина',
-    none: 'Таңдалмаған'
+    none: 'Таңдалмаған',
+    weekdayShort: 'жұмыс',
+    weekendShort: 'дем',
+    tariffLabel: 'Қолданылатын тариф:',
+    tariffWeekend: 'Жұма – Жексенбі / Мерекелер',
+    tariffWeekday: 'Жұмыс күндері'
   }
 }
 
@@ -160,13 +168,12 @@ const selectedRoom = ref<any>(null)
 // Наличие задатка
 const hasDeposit = computed(() => Number(currentBanya.value?.depositAmount || 0) > 0)
 
-// Управление календарем и датой
+// Календарь
 const now = new Date()
 const currentYear = now.getFullYear()
 const currentMonth = now.getMonth()
 const todayDate = now.getDate()
 
-// Смещение месяцев для бронирования вперед
 const monthOffset = ref(0)
 const viewDate = computed(() => new Date(currentYear, currentMonth + monthOffset.value, 1))
 const viewYear = computed(() => viewDate.value.getFullYear())
@@ -187,7 +194,7 @@ const clientPhone = ref('')
 const isKaspiSameAsPhone = ref(true)
 const customKaspiPhone = ref('')
 
-// Дополнительные товары: { [id]: count }
+// Счетчик доп. товаров
 const extrasQuantities = ref<Record<number, number>>({})
 
 const getExtraQty = (id: number): number => extrasQuantities.value[id] || 0
@@ -202,7 +209,6 @@ const updateExtraQty = (id: number, delta: number) => {
   }
 }
 
-// Переключение выбора зала
 const toggleRoom = (room: any) => {
   if (selectedRoom.value?.id === room.id) {
     selectedRoom.value = null
@@ -214,7 +220,7 @@ const toggleRoom = (room: any) => {
   }
 }
 
-// Строгая маска телефонов Казахстана (+7 7XX XXX-XX-XX)
+// Телефонная маска (+7 7XX XXX-XX-XX)
 const formatKZPhone = (val: string): string => {
   if (!val) return ''
   let digits = val.replace(/\D/g, '')
@@ -263,7 +269,50 @@ const getMediaUrl = (mediaObj: any) => {
   return url.startsWith('http') ? url : `${STRAPI_BASE_URL}${url}`
 }
 
-// Блокировка фонового скролла при открытых окнах
+// Динамическое обновление favicon и Open Graph тегов
+const updateMetaAndFavicon = (banya: any) => {
+  if (!banya) return
+
+  const name = banya.name_ru || 'Банный комплекс'
+  const desc = banya.workingHours_ru 
+    ? `Онлайн-бронирование. Режим работы: ${banya.workingHours_ru}` 
+    : 'Онлайн-бронирование залов и кабинок'
+  const logoUrl = getMediaUrl(banya.logo)
+
+  document.title = name
+
+  if (logoUrl) {
+    let favicon = document.querySelector("link[rel*='icon']") as HTMLLinkElement
+    if (!favicon) {
+      favicon = document.createElement('link')
+      favicon.rel = 'icon'
+      document.head.appendChild(favicon)
+    }
+    favicon.type = 'image/png'
+    favicon.href = logoUrl
+  }
+
+  const setMeta = (attr: string, key: string, content: string) => {
+    let el = document.querySelector(`meta[${attr}='${key}']`)
+    if (!el) {
+      el = document.createElement('meta')
+      el.setAttribute(attr, key)
+      document.head.appendChild(el)
+    }
+    el.setAttribute('content', content)
+  }
+
+  setMeta('property', 'og:title', name)
+  setMeta('property', 'og:description', desc)
+  if (logoUrl) {
+    setMeta('property', 'og:image', logoUrl)
+    setMeta('name', 'twitter:image', logoUrl)
+  }
+  setMeta('name', 'twitter:title', name)
+  setMeta('name', 'twitter:description', desc)
+}
+
+// Блокировка фонового скролла
 const anyModalOpen = computed(() => isGalleryOpen.value || isVideoModalOpen.value || isSuccessModalOpen.value)
 
 watch(anyModalOpen, (isOpen) => {
@@ -272,7 +321,6 @@ watch(anyModalOpen, (isOpen) => {
   }
 })
 
-// Обработка закрытия по Escape
 const handleGlobalKeyDown = (e: KeyboardEvent) => {
   if (e.key === 'Escape') {
     if (isGalleryOpen.value) isGalleryOpen.value = false
@@ -287,7 +335,7 @@ const handleGlobalKeyDown = (e: KeyboardEvent) => {
 onMounted(async () => {
   window.addEventListener('keydown', handleGlobalKeyDown)
 
-  const slug = (route.params.slug as string)  
+  const slug = (route.params.slug as string) || 'arasan'
   isLoading.value = true
   loadError.value = ''
 
@@ -312,6 +360,8 @@ onMounted(async () => {
       const item = json.data[0]
       currentBanya.value = item
 
+      updateMetaAndFavicon(item)
+
       const rawCats = item.categories || []
       categoriesList.value = [...rawCats].sort((a: any, b: any) => (a.level || 0) - (b.level || 0))
 
@@ -326,8 +376,7 @@ onMounted(async () => {
           id: v.id,
           title_ru: v.title_ru || '',
           title_kz: v.title_kz || v.title_ru || '',
-          videoUrl: getMediaUrl(v.video),
-          previewUrl: getMediaUrl(v.preview)
+          videoUrl: getMediaUrl(v.video)
         }))
       }
 
@@ -399,22 +448,34 @@ const filteredRooms = computed(() => {
   return roomsList.value.filter((r: any) => r.category?.id === activeCategory.value)
 })
 
-// Расписание и слоты
+// Определение дня недели выбранной даты
 const selectedDayOfWeek = computed(() => {
   return new Date(viewYear.value, viewMonth.value, selectedDay.value).getDay()
 })
 
-const isWeekend = computed(() => {
+// Пятница (5), Суббота (6) и Воскресенье (0) относятся к тарифу выходных дней
+const isWeekendDay = computed(() => {
   const day = selectedDayOfWeek.value
   return day === 5 || day === 6 || day === 0
 })
 
+// Активная часовая ставка с учетом будней и выходных
+const activeHourlyRate = computed(() => {
+  if (!selectedRoom.value) return 0
+  const weekendPrice = Number(selectedRoom.value.pricePerHourWeekend || 0)
+  if (isWeekendDay.value && weekendPrice > 0) {
+    return weekendPrice
+  }
+  return Number(selectedRoom.value.pricePerHour || 0)
+})
+
+// Расписание рабочих часов
 const workingTimeSlots = computed(() => {
-  const startH = isWeekend.value 
+  const startH = isWeekendDay.value 
     ? (currentBanya.value?.weekendStart ?? 12) 
     : (currentBanya.value?.weekdayStart ?? 10)
 
-  const endH = isWeekend.value 
+  const endH = isWeekendDay.value 
     ? (currentBanya.value?.weekendEnd ?? 0) 
     : (currentBanya.value?.weekdayEnd ?? 22)
 
@@ -440,7 +501,6 @@ const availableTimeSlots = computed(() => {
   const curHour = now.getHours()
   return allSlots.filter(slot => {
     const slotH = parseInt(slot.split(':')[0], 10)
-    // Корректная оценка ночных слотов
     const effSlotH = slotH < 6 ? slotH + 24 : slotH
     const effCurH = curHour < 6 ? curHour + 24 : curHour
     return effSlotH > effCurH
@@ -460,10 +520,9 @@ const presetDurations = computed(() => {
   return [min, min + 1, min + 2, min + 3]
 })
 
-// Финансовый расчет: Зал + Товары
+// Расчет суммы аренды зала
 const roomTotalPrice = computed(() => {
-  const price = Number(selectedRoom.value?.pricePerHour || 0)
-  return price * durationHours.value
+  return activeHourlyRate.value * durationHours.value
 })
 
 const extrasTotalPrice = computed(() => {
@@ -508,7 +567,7 @@ const handleNextStep = () => {
   }
   if (currentStep.value === 2) {
     if (!bookingTime.value) {
-      alert(t[currentLang.value].timeAlert)
+      alert(t[currentLang].timeAlert)
       return
     }
     currentStep.value = 3
@@ -516,17 +575,16 @@ const handleNextStep = () => {
   }
 }
 
-// Отправка заявки в Strapi
 const submitBooking = async () => {
   if (isSubmitting.value) return
 
   if (!clientPhone.value || clientPhone.value.length < 18) {
-    alert(t[currentLang.value].phoneAlert)
+    alert(t[currentLang].phoneAlert)
     return
   }
 
   if (hasDeposit.value && !isKaspiSameAsPhone.value && (!customKaspiPhone.value || customKaspiPhone.value.length < 18)) {
-    alert(t[currentLang.value].kaspiPhoneAlert)
+    alert(t[currentLang].kaspiPhoneAlert)
     return
   }
 
@@ -580,7 +638,7 @@ const submitBooking = async () => {
 <template>
   <div class="w-full max-w-md mx-auto min-h-screen flex flex-col relative pb-36 bg-[#F9FAFB] text-neutral-900 font-sans antialiased">
     
-    <!-- Загрузка -->
+    <!-- Индикатор загрузки -->
     <div v-if="isLoading" class="flex-1 flex items-center justify-center min-h-[70vh]">
       <div class="text-center space-y-3">
         <div class="w-8 h-8 border-[2.5px] border-neutral-900 border-t-transparent rounded-full animate-spin mx-auto"></div>
@@ -588,7 +646,7 @@ const submitBooking = async () => {
       </div>
     </div>
 
-    <!-- Ошибка -->
+    <!-- Ошибка загрузки -->
     <div v-else-if="loadError" class="flex-1 flex items-center justify-center min-h-[70vh] p-6 text-center">
       <div class="bg-white p-6 rounded-3xl border border-neutral-200/80 shadow-xs space-y-3 w-full">
         <div class="w-10 h-10 rounded-2xl bg-neutral-100 flex items-center justify-center mx-auto text-neutral-400">
@@ -604,10 +662,10 @@ const submitBooking = async () => {
       </div>
     </div>
 
-    <!-- Основной интерфейс -->
+    <!-- Основной экран -->
     <template v-else>
       
-      <!-- Верхний бар -->
+      <!-- Верхняя панель -->
       <header class="p-4 pt-5 sticky top-0 bg-[#F9FAFB]/90 backdrop-blur-xl z-30 space-y-3 border-b border-neutral-200/50">
         <div class="flex items-center justify-between">
           <button 
@@ -698,7 +756,7 @@ const submitBooking = async () => {
               </div>
             </div>
 
-            <!-- Быстрые действия: WhatsApp выровнен в нейтральный стиль -->
+            <!-- Быстрые действия -->
             <div class="grid grid-cols-4 gap-2 pt-2 border-t border-neutral-100">
               <a 
                 v-if="currentBanya?.whatsapp" 
@@ -743,7 +801,7 @@ const submitBooking = async () => {
             </div>
           </div>
 
-          <!-- Видеообзоры -->
+          <!-- Видеобаннеры без превью-картинок -->
           <div v-if="banyaVideos.length > 0" class="space-y-2.5">
             <div class="flex items-center justify-between px-1">
               <div>
@@ -761,13 +819,13 @@ const submitBooking = async () => {
               >
                 <video 
                   :src="item.videoUrl" 
-                  :poster="item.previewUrl"
-                  preload="metadata"
                   autoplay 
                   loop 
                   muted 
                   playsinline 
-                  class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out"
+                  webkit-playsinline
+                  preload="auto"
+                  class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out pointer-events-none"
                 ></video>
 
                 <div class="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/85 pointer-events-none"></div>
@@ -819,7 +877,7 @@ const submitBooking = async () => {
             </button>
           </div>
 
-          <!-- Список залов с акционными бейджами -->
+          <!-- Карточки залов (с дифференцированной ценой будни/выходные) -->
           <div class="space-y-4">
             <div 
               v-for="room in filteredRooms" 
@@ -841,7 +899,6 @@ const submitBooking = async () => {
                   class="w-full h-full object-cover transition-transform duration-500"
                 >
 
-                <!-- Бейдж акции из Strapi -->
                 <div 
                   v-if="room.badge_ru || room.badge_kz" 
                   class="absolute top-3 left-3 bg-neutral-900/85 backdrop-blur-md text-white text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full border border-white/20 shadow-xs flex items-center gap-1.5"
@@ -871,11 +928,27 @@ const submitBooking = async () => {
                   <h3 class="font-extrabold text-neutral-900 text-base tracking-tight">
                     {{ currentLang === 'kz' ? (room.name_kz || room.name_ru) : room.name_ru }}
                   </h3>
+
+                  <!-- Блок цен: будни / выходные -->
                   <div class="text-right">
-                    <span class="text-neutral-900 font-black text-lg font-mono">
-                      {{ Number(room.pricePerHour || 0).toLocaleString() }} ₸
-                    </span>
-                    <span class="text-neutral-400 font-medium text-xs">{{ t[currentLang].perHour }}</span>
+                    <template v-if="room.pricePerHourWeekend && Number(room.pricePerHourWeekend) !== Number(room.pricePerHour)">
+                      <div class="flex flex-col items-end">
+                        <span class="text-neutral-900 font-black text-sm font-mono leading-none">
+                          {{ Number(room.pricePerHour).toLocaleString() }} ₸
+                          <span class="text-[10px] font-bold text-neutral-400 font-sans">/ {{ t[currentLang].weekdayShort }}</span>
+                        </span>
+                        <span class="text-neutral-600 font-black text-xs font-mono mt-1 leading-none">
+                          {{ Number(room.pricePerHourWeekend).toLocaleString() }} ₸
+                          <span class="text-[10px] font-bold text-neutral-400 font-sans">/ {{ t[currentLang].weekendShort }}</span>
+                        </span>
+                      </div>
+                    </template>
+                    <template v-else>
+                      <span class="text-neutral-900 font-black text-lg font-mono">
+                        {{ Number(room.pricePerHour || 0).toLocaleString() }} ₸
+                      </span>
+                      <span class="text-neutral-400 font-medium text-xs">{{ t[currentLang].perHour }}</span>
+                    </template>
                   </div>
                 </div>
 
@@ -912,7 +985,7 @@ const submitBooking = async () => {
           </div>
         </section>
 
-        <!-- ШАГ 2: ДАТА И ВРЕМЯ (С ПЕРЕКЛЮЧЕНИЕМ МЕСЯЦЕВ) -->
+        <!-- ШАГ 2: ДАТА И ВРЕМЯ (С ПЕРЕКЛЮЧЕНИЕМ МЕСЯЦЕВ И ИНДИКАТОРОМ ТАРИФА) -->
         <section v-if="currentStep === 2" class="space-y-4">
           <div class="px-0.5">
             <h2 class="text-lg font-extrabold tracking-tight text-neutral-900">{{ t[currentLang].step2Title }}</h2>
@@ -933,7 +1006,6 @@ const submitBooking = async () => {
                 </span>
               </div>
 
-              <!-- Переключение месяцев -->
               <div class="flex items-center gap-1">
                 <button 
                   @click="monthOffset > 0 ? monthOffset-- : null"
@@ -976,12 +1048,12 @@ const submitBooking = async () => {
             </div>
           </div>
 
-          <!-- Слоты времени -->
+          <!-- Время заезда -->
           <div class="bg-white p-4.5 rounded-[28px] border border-neutral-200/70 shadow-[0_1px_3px_rgba(0,0,0,0.03)] space-y-3">
             <div class="flex justify-between items-baseline">
               <label class="font-extrabold text-neutral-900 text-sm block">{{ t[currentLang].entryTime }}</label>
               <span class="text-[11px] text-neutral-400 font-medium">
-                {{ isWeekend 
+                {{ isWeekendDay 
                     ? (currentBanya?.workingHours_kz || '12:00 - 00:00') 
                     : (currentBanya?.workingHours_ru || '10:00 - 22:00') 
                 }}
@@ -1006,7 +1078,7 @@ const submitBooking = async () => {
             </p>
           </div>
 
-          <!-- Часы -->
+          <!-- Длительность и индикатор тарифа -->
           <div class="bg-white p-4.5 rounded-[28px] border border-neutral-200/70 shadow-[0_1px_3px_rgba(0,0,0,0.03)] space-y-3">
             <div class="flex justify-between items-baseline">
               <label class="font-extrabold text-neutral-900 text-sm block">{{ t[currentLang].duration }}</label>
@@ -1050,10 +1122,21 @@ const submitBooking = async () => {
                 </button>
               </div>
             </div>
+
+            <!-- Информационный бейдж текущего тарифа дня -->
+            <div class="pt-2 border-t border-neutral-100 flex items-center justify-between text-xs">
+              <span class="text-neutral-500 font-medium">{{ t[currentLang].tariffLabel }}</span>
+              <span 
+                :class="isWeekendDay ? 'bg-amber-50 text-amber-700 border-amber-200/60' : 'bg-neutral-100 text-neutral-700 border-neutral-200/60'"
+                class="font-bold px-2.5 py-1 rounded-xl border text-[11px]"
+              >
+                {{ isWeekendDay ? t[currentLang].tariffWeekend : t[currentLang].tariffWeekday }} ({{ activeHourlyRate.toLocaleString() }} ₸/{{ t[currentLang].hours }})
+              </span>
+            </div>
           </div>
         </section>
 
-        <!-- ШАГ 3: ГОСТИ, ДОПЫ, КОНТАКТЫ, KASPI PAY -->
+        <!-- ШАГ 3: ГОСТИ, ДОПЫ (СКРЫТЫ ЕСЛИ НЕТ), КОНТАКТЫ, KASPI PAY -->
         <section v-if="currentStep === 3" class="space-y-4">
           <div class="px-0.5">
             <h2 class="text-lg font-extrabold tracking-tight text-neutral-900">{{ t[currentLang].step3Title }}</h2>
@@ -1112,14 +1195,17 @@ const submitBooking = async () => {
             </div>
           </div>
 
-          <!-- Товары и принадлежности -->
-          <div class="bg-white p-4.5 rounded-[28px] border border-neutral-200/70 shadow-[0_1px_3px_rgba(0,0,0,0.03)] space-y-3">
+          <!-- Банные принадлежности (ПОЛНОСТЬЮ СКРЫВАЮТСЯ, ЕСЛИ ТОВАРОВ НЕТ) -->
+          <div 
+            v-if="banyaExtras.length > 0" 
+            class="bg-white p-4.5 rounded-[28px] border border-neutral-200/70 shadow-[0_1px_3px_rgba(0,0,0,0.03)] space-y-3"
+          >
             <div>
               <span class="font-extrabold text-neutral-900 text-sm block">{{ t[currentLang].extras }}</span>
               <p class="text-[10px] text-neutral-400 font-medium">{{ t[currentLang].extrasNote }}</p>
             </div>
 
-            <div v-if="banyaExtras.length > 0" class="space-y-2 pt-1">
+            <div class="space-y-2 pt-1">
               <div 
                 v-for="item in banyaExtras" 
                 :key="item.id"
@@ -1168,10 +1254,9 @@ const submitBooking = async () => {
                 </div>
               </div>
             </div>
-            <p v-else class="text-xs text-neutral-400 py-1">{{ t[currentLang].noExtras }}</p>
           </div>
 
-          <!-- Контакты (с базовым размером 16px для защиты от iOS Zoom) -->
+          <!-- Контакты -->
           <div class="bg-white p-4.5 rounded-[28px] border border-neutral-200/70 shadow-[0_1px_3px_rgba(0,0,0,0.03)] space-y-3">
             <span class="font-extrabold text-neutral-900 text-sm block">{{ t[currentLang].contacts }}</span>
             <input 
@@ -1190,7 +1275,7 @@ const submitBooking = async () => {
             >
           </div>
 
-          <!-- Kaspi Pay: Финтех-карточка с контурной зеленой галочкой -->
+          <!-- Kaspi Pay -->
           <div 
             v-if="hasDeposit" 
             class="bg-white p-5 rounded-[28px] border border-neutral-200/80 shadow-[0_2px_10px_rgba(0,0,0,0.02)] space-y-4"
@@ -1236,7 +1321,6 @@ const submitBooking = async () => {
                   </span>
                 </div>
 
-                <!-- Контурная зеленая галочка -->
                 <div class="shrink-0 pl-3">
                   <svg v-if="isKaspiSameAsPhone" class="w-6 h-6 text-[#16A34A]" viewBox="0 0 24 24" fill="none">
                     <circle cx="12" cy="12" r="9.5" stroke="currentColor" stroke-width="2.2" class="fill-white" />
@@ -1246,7 +1330,6 @@ const submitBooking = async () => {
                 </div>
               </div>
 
-              <!-- Ввод стороннего номера Kaspi -->
               <div class="pt-0.5">
                 <button 
                   v-if="isKaspiSameAsPhone" 
@@ -1284,7 +1367,7 @@ const submitBooking = async () => {
 
       </main>
 
-      <!-- Нижний бар фиксации -->
+      <!-- Нижний бар фиксации с итоговой стоимостью -->
       <footer class="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white/95 backdrop-blur-xl border-t border-neutral-200/70 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] z-40 shadow-[0_-4px_20px_rgba(0,0,0,0.03)]">
         <div v-if="currentStep === 1" class="flex items-center gap-3">
           <div class="flex-1 min-w-0">
@@ -1387,7 +1470,8 @@ const submitBooking = async () => {
               <span class="font-bold text-neutral-800">{{ selectedDay }} {{ monthNames[currentLang][viewMonth] }}, {{ bookingTime }}</span>
             </div>
 
-            <div v-if="selectedExtrasText !== t[currentLang].none" class="flex justify-between items-start pt-1 border-t border-neutral-200/40">
+            <!-- Доп. товары в чеке -->
+            <div v-if="banyaExtras.length > 0 && selectedExtrasText !== t[currentLang].none" class="flex justify-between items-start pt-1 border-t border-neutral-200/40">
               <span class="text-neutral-400 shrink-0">Доп. товары:</span>
               <span class="font-semibold text-neutral-700 text-right pl-2 leading-tight text-[11px]">{{ selectedExtrasText }}</span>
             </div>
