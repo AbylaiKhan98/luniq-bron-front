@@ -46,18 +46,29 @@ const t = {
     step3Subtitle: 'Проверьте данные заказа и укажите контактный телефон',
     all: 'Все залы',
     perHour: '/час',
+    perPackage: 'за пакет',
+    perDay: 'за день',
+    extraHourShort: 'доп. час',
     today: 'Сегодня',
     entryTime: 'Время заезда',
     noSlotsToday: 'На выбранную дату свободных слотов нет',
-    duration: 'Количество часов',
+    duration: 'Длительность посещения',
+    dailyDurationTitle: 'Формат посещения',
+    dailyBadge: 'Целый день (дневной тариф)',
+    dailyNote: 'В стоимость включена аренда на весь день. Выберите только удобное время заезда.',
+    packageDurationNote: 'Базовый пакет аренды с возможностью продления',
     minOrder: 'Мин. заказ',
     hours: 'ч',
+    packageBadge: 'пакет',
     customDuration: 'Свой выбор',
     guests: 'Количество гостей',
     customGuests: 'Другое число',
     chooseFromList: 'Выбрать из списка',
-    baseCapacityLabel: 'Вместимость:',
+    baseCapacityLabel: 'Базовая вместимость:',
+    extraGuestRateLabel: 'доп. гость',
     extraGuestsSurcharge: 'Доплата за доп. гостей',
+    baseRentIncluded: 'Базовая аренда',
+    extensionSurcharge: 'Продление времени',
     extras: 'Банные принадлежности и товары',
     extrasNote: 'Суммируются в общий чек заказа',
     contacts: 'Контакты гостя',
@@ -110,18 +121,29 @@ const t = {
     step3Subtitle: 'Тапсырыс құрамын тексеріп, байланыс нөміріңізді енгізіңіз',
     all: 'Барлық залдар',
     perHour: '/сағ',
+    perPackage: 'пакетке',
+    perDay: 'күнге',
+    extraHourShort: 'қос. сағат',
     today: 'Бүгін',
     entryTime: 'Келу уақыты',
     noSlotsToday: 'Бұл күнге бос уақыт қалмады',
-    duration: 'Ұзақтығы',
+    duration: 'Қалу ұзақтығы',
+    dailyDurationTitle: 'Қалу форматы',
+    dailyBadge: 'Күні бойы (күндізгі тариф)',
+    dailyNote: 'Құнына күні бойы жалдау кіреді. Тек келетін уақытыңызды таңдаңыз.',
+    packageDurationNote: 'Ұзарту мүмкіндігі бар негізгі пакет',
     minOrder: 'Ең аз тапсырыс',
     hours: 'сағ',
+    packageBadge: 'пакет',
     customDuration: 'Басқа уақыт',
     guests: 'Қонақтар саны',
     customGuests: 'Басқа сан',
     chooseFromList: 'Тізімнен таңдау',
-    baseCapacityLabel: 'Сыйымдылығы:',
+    baseCapacityLabel: 'Негізгі сыйымдылығы:',
+    extraGuestRateLabel: 'қос. қонақ',
     extraGuestsSurcharge: 'Қосымша қонақтар үшін төлем',
+    baseRentIncluded: 'Негізгі жалдау',
+    extensionSurcharge: 'Уақытты ұзарту',
     extras: 'Монша керек-жарақтары мен тауарлар',
     extrasNote: 'Жалпы тапсырыс сомасына қосылады',
     contacts: 'Қонақ мәліметтері',
@@ -213,26 +235,55 @@ const updateExtraQty = (id: number, delta: number) => {
   }
 }
 
+// Определение дня недели: Пт (5), Сб (6), Вс (0) = выходной тариф
+const selectedDayOfWeek = computed(() => {
+  return new Date(viewYear.value, viewMonth.value, selectedDay.value).getDay()
+})
+
+const isWeekendDay = computed(() => {
+  const day = selectedDayOfWeek.value
+  return day === 5 || day === 6 || day === 0
+})
+
+// Базовые включенные часы зала
+const roomIncludedHours = computed(() => {
+  if (!selectedRoom.value) return 1
+  return selectedRoom.value.packageHours || selectedRoom.value.minHours || 1
+})
+
+// Тип тарификации зала: 'hourly' | 'package' | 'daily'
+const roomPricingType = computed(() => {
+  if (!selectedRoom.value) return 'hourly'
+  if (selectedRoom.value.pricingType) return selectedRoom.value.pricingType
+  if (selectedRoom.value.packageHours && selectedRoom.value.packageHours > 1) return 'package'
+  return 'hourly'
+})
+
 // Переключение выбора зала
 const toggleRoom = (room: any) => {
   if (selectedRoom.value?.id === room.id) {
     selectedRoom.value = null
   } else {
     selectedRoom.value = room
-    if (durationHours.value < (room.minHours || 2)) {
-      durationHours.value = room.minHours || 2
-    }
+    const baseHours = room.pricingType === 'daily' 
+      ? (room.packageHours || 12) 
+      : (room.packageHours || room.minHours || 2)
+    durationHours.value = baseHours
+    guestsCount.value = room.capacity || 2
   }
 }
 
-// При выборе зала подставляем номинальное число гостей
 watch(selectedRoom, (room) => {
   if (room) {
+    const baseHours = room.pricingType === 'daily' 
+      ? (room.packageHours || 12) 
+      : (room.packageHours || room.minHours || 2)
+    durationHours.value = baseHours
     guestsCount.value = room.capacity || 2
   }
 })
 
-// Генерация кнопок гостей под лимит зала
+// Динамические кнопки выбора гостей: от 1 до maxCapacity
 const guestOptions = computed(() => {
   const max = selectedRoom.value?.maxCapacity || selectedRoom.value?.capacity || 4
   const list: number[] = []
@@ -242,22 +293,26 @@ const guestOptions = computed(() => {
   return list
 })
 
-// Дополнительные гости сверх нормы
+// Расчет дополнительных гостей сверх номинала
 const extraGuestsCount = computed(() => {
   if (!selectedRoom.value) return 0
   const base = selectedRoom.value.capacity || 2
   return Math.max(0, guestsCount.value - base)
 })
 
-const extraGuestsPriceTotal = computed(() => {
-  const rate = Number(selectedRoom.value?.extraGuestPricePerHour || 0)
-  return extraGuestsCount.value * rate * durationHours.value
+const extraGuestHourlyRate = computed(() => {
+  if (!selectedRoom.value) return 0
+  return Number(selectedRoom.value.extraGuestPricePerHour || 0)
 })
 
-// Нерабочие дни недели (0 - Вс, 1 - Пн, 2 - Вт, и т.д.)
+const extraGuestsPriceTotal = computed(() => {
+  return extraGuestsCount.value * extraGuestHourlyRate.value * durationHours.value
+})
+
+// Парсинг нерабочих дней недели комплекса
 const disabledDaysOfWeek = computed<number[]>(() => {
   const raw = currentBanya.value?.closedDays
-  if (raw === undefined || raw === null || String(raw).trim() === '') return []
+  if (!raw && raw !== 0) return []
   return String(raw).split(',').map(d => parseInt(d.trim(), 10)).filter(d => !isNaN(d))
 })
 
@@ -268,7 +323,6 @@ const isDateClosed = (dayNumber: number): boolean => {
 
 const daysInMonth = computed(() => new Date(viewYear.value, viewMonth.value + 1, 0).getDate())
 
-// Автоматический перенос выбора, если число выпадает на выходной
 watch([viewMonth, viewYear, disabledDaysOfWeek], () => {
   if (isDateClosed(selectedDay.value)) {
     for (let d = 1; d <= daysInMonth.value; d++) {
@@ -279,6 +333,66 @@ watch([viewMonth, viewYear, disabledDaysOfWeek], () => {
     }
   }
 }, { immediate: true })
+
+// Тарифная логика: Базовый пакет + Продление
+const activeBasePackagePrice = computed(() => {
+  if (!selectedRoom.value) return 0
+  const room = selectedRoom.value
+  const isWk = isWeekendDay.value
+
+  if (room.packagePrice || room.packagePriceWeekend) {
+    if (isWk && room.packagePriceWeekend) return Number(room.packagePriceWeekend)
+    return Number(room.packagePrice || 0)
+  }
+
+  // Для обычного почасового зала ставка умножается на включенные часы
+  const hourlyRate = isWk && room.pricePerHourWeekend ? Number(room.pricePerHourWeekend) : Number(room.pricePerHour || 0)
+  return hourlyRate * roomIncludedHours.value
+})
+
+const activeExtraHourRate = computed(() => {
+  if (!selectedRoom.value) return 0
+  const room = selectedRoom.value
+  const isWk = isWeekendDay.value
+  if (isWk && room.pricePerHourWeekend) {
+    return Number(room.pricePerHourWeekend)
+  }
+  return Number(room.pricePerHour || 0)
+})
+
+// Расчет часов продления сверх пакета
+const extraHoursCount = computed(() => {
+  if (roomPricingType.value === 'daily') return 0
+  return Math.max(0, durationHours.value - roomIncludedHours.value)
+})
+
+const extraHoursPriceTotal = computed(() => {
+  return extraHoursCount.value * activeExtraHourRate.value
+})
+
+// Базовая аренда зала + продление + доплата за гостей
+const baseRoomRentPrice = computed(() => {
+  return activeBasePackagePrice.value + extraHoursPriceTotal.value
+})
+
+const roomTotalPrice = computed(() => {
+  return baseRoomRentPrice.value + extraGuestsPriceTotal.value
+})
+
+const extrasTotalPrice = computed(() => {
+  return banyaExtras.value.reduce((sum, item) => {
+    const qty = extrasQuantities.value[item.id] || 0
+    return sum + (Number(item.price || 0) * qty)
+  }, 0)
+})
+
+const totalPrice = computed(() => roomTotalPrice.value + extrasTotalPrice.value)
+
+// Пресеты времени
+const presetDurations = computed(() => {
+  const base = roomIncludedHours.value
+  return [base, base + 1, base + 2, base + 3]
+})
 
 // Телефонная маска
 const formatKZPhone = (val: string): string => {
@@ -329,7 +443,6 @@ const getMediaUrl = (mediaObj: any) => {
   return url.startsWith('http') ? url : `${STRAPI_BASE_URL}${url}`
 }
 
-// Динамический favicon и теги Open Graph
 const updateMetaAndFavicon = (banya: any) => {
   if (!banya) return
 
@@ -372,7 +485,7 @@ const updateMetaAndFavicon = (banya: any) => {
   setMeta('name', 'twitter:description', desc)
 }
 
-// Блокировка фона при модалках
+// Блокировка скролла фона
 const anyModalOpen = computed(() => isGalleryOpen.value || isVideoModalOpen.value || isSuccessModalOpen.value)
 
 watch(anyModalOpen, (isOpen) => {
@@ -428,7 +541,11 @@ onMounted(async () => {
       roomsList.value = item.rooms || []
       if (roomsList.value.length > 0) {
         selectedRoom.value = roomsList.value[0]
-        durationHours.value = selectedRoom.value.minHours || 2
+        const base = selectedRoom.value.pricingType === 'daily'
+          ? (selectedRoom.value.packageHours || 12)
+          : (selectedRoom.value.packageHours || selectedRoom.value.minHours || 2)
+        durationHours.value = base
+        guestsCount.value = selectedRoom.value.capacity || 2
       }
 
       if (Array.isArray(item.videos) && item.videos.length > 0) {
@@ -508,24 +625,6 @@ const filteredRooms = computed(() => {
   return roomsList.value.filter((r: any) => r.category?.id === activeCategory.value)
 })
 
-const selectedDayOfWeek = computed(() => {
-  return new Date(viewYear.value, viewMonth.value, selectedDay.value).getDay()
-})
-
-const isWeekendDay = computed(() => {
-  const day = selectedDayOfWeek.value
-  return day === 5 || day === 6 || day === 0
-})
-
-const activeHourlyRate = computed(() => {
-  if (!selectedRoom.value) return 0
-  const weekendPrice = Number(selectedRoom.value.pricePerHourWeekend || 0)
-  if (isWeekendDay.value && weekendPrice > 0) {
-    return weekendPrice
-  }
-  return Number(selectedRoom.value.pricePerHour || 0)
-})
-
 const workingTimeSlots = computed(() => {
   if (isDateClosed(selectedDay.value)) return []
 
@@ -573,24 +672,6 @@ watch(availableTimeSlots, (slots) => {
   }
 }, { immediate: true })
 
-const presetDurations = computed(() => {
-  const min = selectedRoom.value?.minHours || 2
-  return [min, min + 1, min + 2, min + 3]
-})
-
-// Финансовый расчет аренды зала
-const baseRentPrice = computed(() => activeHourlyRate.value * durationHours.value)
-const roomTotalPrice = computed(() => baseRentPrice.value + extraGuestsPriceTotal.value)
-
-const extrasTotalPrice = computed(() => {
-  return banyaExtras.value.reduce((sum, item) => {
-    const qty = extrasQuantities.value[item.id] || 0
-    return sum + (Number(item.price || 0) * qty)
-  }, 0)
-})
-
-const totalPrice = computed(() => roomTotalPrice.value + extrasTotalPrice.value)
-
 const selectedExtrasText = computed(() => {
   const items: string[] = []
   for (const extra of banyaExtras.value) {
@@ -623,7 +704,7 @@ const handleNextStep = () => {
   }
   if (currentStep.value === 2) {
     if (!bookingTime.value) {
-      alert(t[currentLang.value].timeAlert)
+      alert(t[currentLang].timeAlert)
       return
     }
     currentStep.value = 3
@@ -631,16 +712,17 @@ const handleNextStep = () => {
   }
 }
 
+// Отправка заявки
 const submitBooking = async () => {
   if (isSubmitting.value) return
 
   if (!clientPhone.value || clientPhone.value.length < 18) {
-    alert(t[currentLang.value].phoneAlert)
+    alert(t[currentLang].phoneAlert)
     return
   }
 
   if (hasDeposit.value && !isKaspiSameAsPhone.value && (!customKaspiPhone.value || customKaspiPhone.value.length < 18)) {
-    alert(t[currentLang.value].kaspiPhoneAlert)
+    alert(t[currentLang].phoneAlert)
     return
   }
 
@@ -650,12 +732,26 @@ const submitBooking = async () => {
   const banyaRef = currentBanya.value?.documentId || currentBanya.value?.id
   const roomRef = selectedRoom.value?.documentId || selectedRoom.value?.id
 
-  let extrasString = selectedExtrasText.value
+  // Подготовка подробной расшифровки для Telegram
+  const breakdownParts: string[] = []
+
+  if (roomPricingType.value === 'daily') {
+    breakdownParts.push(`Тариф: День (${activeBasePackagePrice.value.toLocaleString()} ₸)`)
+  } else if (roomPricingType.value === 'package') {
+    breakdownParts.push(`Пакет (${roomIncludedHours.value} ч): ${activeBasePackagePrice.value.toLocaleString()} ₸`)
+    if (extraHoursCount.value > 0) {
+      breakdownParts.push(`Продление (+${extraHoursCount.value} ч): +${extraHoursPriceTotal.value.toLocaleString()} ₸`)
+    }
+  } else {
+    breakdownParts.push(`Аренда (${durationHours.value} ч): ${baseRoomRentPrice.value.toLocaleString()} ₸`)
+  }
+
   if (extraGuestsCount.value > 0) {
-    const extraGuestsInfo = `Доп. гости: +${extraGuestsCount.value} чел (${extraGuestsPriceTotal.value.toLocaleString()} ₸)`
-    extrasString = extrasString === t[currentLang.value].none 
-      ? extraGuestsInfo 
-      : `${extrasString}, ${extraGuestsInfo}`
+    breakdownParts.push(`Доп. гости (+${extraGuestsCount.value} чел × ${durationHours.value} ч): +${extraGuestsPriceTotal.value.toLocaleString()} ₸`)
+  }
+
+  if (selectedExtrasText.value !== t[currentLang].none) {
+    breakdownParts.push(`Товары: ${selectedExtrasText.value}`)
   }
 
   const payload: any = {
@@ -667,7 +763,7 @@ const submitBooking = async () => {
     guestsCount: guestsCount.value,
     totalPrice: totalPrice.value,
     bookingStatus: 'pending',
-    extras: extrasString
+    extras: breakdownParts.join(' | ')
   }
 
   if (hasDeposit.value && targetKaspiPhone.value) {
@@ -691,8 +787,8 @@ const submitBooking = async () => {
 
     isSuccessModalOpen.value = true
   } catch (e: any) {
-    console.error('Ошибка записи брони:', e)
-    alert(`Не удалось отправить бронь: ${e.message || 'Проверьте соединение с сервером'}`)
+    console.error('Ошибка отправки брони:', e)
+    alert(`Не удалось отправить бронь: ${e.message || 'Проверьте соединение'}`)
   } finally {
     isSubmitting.value = false
   }
@@ -702,7 +798,7 @@ const submitBooking = async () => {
 <template>
   <div class="w-full max-w-md mx-auto min-h-screen flex flex-col relative pb-36 bg-[#F9FAFB] text-neutral-900 font-sans antialiased">
     
-    <!-- Загрузка -->
+    <!-- Индикатор загрузки -->
     <div v-if="isLoading" class="flex-1 flex items-center justify-center min-h-[70vh]">
       <div class="text-center space-y-3">
         <div class="w-8 h-8 border-[2.5px] border-neutral-900 border-t-transparent rounded-full animate-spin mx-auto"></div>
@@ -710,7 +806,7 @@ const submitBooking = async () => {
       </div>
     </div>
 
-    <!-- Ошибка -->
+    <!-- Ошибка загрузки -->
     <div v-else-if="loadError" class="flex-1 flex items-center justify-center min-h-[70vh] p-6 text-center">
       <div class="bg-white p-6 rounded-3xl border border-neutral-200/80 shadow-xs space-y-3 w-full">
         <div class="w-10 h-10 rounded-2xl bg-neutral-100 flex items-center justify-center mx-auto text-neutral-400">
@@ -726,10 +822,10 @@ const submitBooking = async () => {
       </div>
     </div>
 
-    <!-- Основной интерфейс -->
+    <!-- Основной экран -->
     <template v-else>
       
-      <!-- Верхний бар -->
+      <!-- Верхняя панель -->
       <header class="p-4 pt-5 sticky top-0 bg-[#F9FAFB]/90 backdrop-blur-xl z-30 space-y-3 border-b border-neutral-200/50">
         <div class="flex items-center justify-between">
           <button 
@@ -820,7 +916,7 @@ const submitBooking = async () => {
               </div>
             </div>
 
-            <!-- Кнопки связи -->
+            <!-- Быстрые действия -->
             <div class="grid grid-cols-4 gap-2 pt-2 border-t border-neutral-100">
               <a 
                 v-if="currentBanya?.whatsapp" 
@@ -907,7 +1003,7 @@ const submitBooking = async () => {
             </div>
           </div>
 
-          <!-- Заголовок выбора -->
+          <!-- Заголовок -->
           <div class="pt-1 px-0.5">
             <h2 class="text-lg font-extrabold tracking-tight text-neutral-900">{{ t[currentLang].step1Title }}</h2>
             <p class="text-xs text-neutral-500 mt-0.5">{{ t[currentLang].step1Subtitle }}</p>
@@ -941,7 +1037,7 @@ const submitBooking = async () => {
             </button>
           </div>
 
-          <!-- Залы с тарифами -->
+          <!-- Карточки залов -->
           <div class="space-y-4">
             <div 
               v-for="room in filteredRooms" 
@@ -995,34 +1091,68 @@ const submitBooking = async () => {
 
                   <!-- Блок цен -->
                   <div class="text-right">
-                    <template v-if="room.pricePerHourWeekend && Number(room.pricePerHourWeekend) !== Number(room.pricePerHour)">
+                    <!-- Тариф: День -->
+                    <template v-if="room.pricingType === 'daily'">
                       <div class="flex flex-col items-end">
-                        <span class="text-neutral-900 font-black text-sm font-mono leading-none">
-                          {{ Number(room.pricePerHour).toLocaleString() }} ₸
-                          <span class="text-[10px] font-bold text-neutral-400 font-sans">/ {{ t[currentLang].weekdayShort }}</span>
-                        </span>
-                        <span class="text-neutral-600 font-black text-xs font-mono mt-1 leading-none">
-                          {{ Number(room.pricePerHourWeekend).toLocaleString() }} ₸
-                          <span class="text-[10px] font-bold text-neutral-400 font-sans">/ {{ t[currentLang].weekendShort }}</span>
+                        <span class="text-neutral-900 font-black text-base font-mono leading-none">
+                          {{ Number(room.packagePrice || room.pricePerHour || 0).toLocaleString() }} ₸
+                          <span class="text-[10px] font-bold text-neutral-400 font-sans">/ {{ t[currentLang].perDay }}</span>
                         </span>
                       </div>
                     </template>
+
+                    <!-- Тариф: Пакет -->
+                    <template v-else-if="room.pricingType === 'package' || (room.packageHours && room.packageHours > 1)">
+                      <div class="flex flex-col items-end">
+                        <span class="text-neutral-900 font-black text-base font-mono leading-none">
+                          {{ Number(room.packagePrice || room.pricePerHour || 0).toLocaleString() }} ₸
+                          <span class="text-[10px] font-bold text-neutral-400 font-sans">/ {{ room.packageHours || 4 }} {{ t[currentLang].hours }}</span>
+                        </span>
+                        <span v-if="room.pricePerHour" class="text-neutral-500 font-medium text-[10px] font-mono mt-1 leading-none">
+                          {{ t[currentLang].extraHourShort }}: {{ Number(room.pricePerHour).toLocaleString() }} ₸
+                        </span>
+                      </div>
+                    </template>
+
+                    <!-- Тариф: Почасовой -->
                     <template v-else>
-                      <span class="text-neutral-900 font-black text-lg font-mono">
-                        {{ Number(room.pricePerHour || 0).toLocaleString() }} ₸
-                      </span>
-                      <span class="text-neutral-400 font-medium text-xs">{{ t[currentLang].perHour }}</span>
+                      <template v-if="room.pricePerHourWeekend && Number(room.pricePerHourWeekend) !== Number(room.pricePerHour)">
+                        <div class="flex flex-col items-end">
+                          <span class="text-neutral-900 font-black text-sm font-mono leading-none">
+                            {{ Number(room.pricePerHour).toLocaleString() }} ₸
+                            <span class="text-[10px] font-bold text-neutral-400 font-sans">/ {{ t[currentLang].weekdayShort }}</span>
+                          </span>
+                          <span class="text-neutral-600 font-black text-xs font-mono mt-1 leading-none">
+                            {{ Number(room.pricePerHourWeekend).toLocaleString() }} ₸
+                            <span class="text-[10px] font-bold text-neutral-400 font-sans">/ {{ t[currentLang].weekendShort }}</span>
+                          </span>
+                        </div>
+                      </template>
+                      <template v-else>
+                        <span class="text-neutral-900 font-black text-lg font-mono">
+                          {{ Number(room.pricePerHour || 0).toLocaleString() }} ₸
+                        </span>
+                        <span class="text-neutral-400 font-medium text-xs">{{ t[currentLang].perHour }}</span>
+                      </template>
                     </template>
                   </div>
                 </div>
 
-                <div class="flex items-center gap-2.5 text-xs text-neutral-500 mt-2 font-medium">
+                <!-- Вместимость и доплата за экстра-гостя -->
+                <div class="flex items-center gap-2 text-xs text-neutral-500 mt-2 font-medium flex-wrap">
                   <span class="flex items-center gap-1">
                     <svg class="w-4 h-4 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"/></svg>
-                    {{ currentLang === 'kz' ? `${room.capacity} қонаққа дейін` : `до ${room.capacity} гостей` }}
+                    до {{ room.capacity }} чел.
                   </span>
+                  
+                  <span v-if="room.extraGuestPricePerHour && Number(room.extraGuestPricePerHour) > 0" class="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md font-semibold text-[11px]">
+                    +{{ Number(room.extraGuestPricePerHour).toLocaleString() }} ₸/чел/ч
+                  </span>
+
                   <span class="text-neutral-300">•</span>
-                  <span>{{ t[currentLang].minOrder }}: {{ room.minHours || 2 }} {{ t[currentLang].hours }}</span>
+                  <span>
+                    {{ t[currentLang].minOrder }}: {{ room.pricingType === 'daily' ? '1 день' : `${room.packageHours || room.minHours || 2} ${t[currentLang].hours}` }}
+                  </span>
                 </div>
 
                 <button 
@@ -1049,7 +1179,7 @@ const submitBooking = async () => {
           </div>
         </section>
 
-        <!-- ШАГ 2: ДАТА И ВРЕМЯ (С ЧИСТЫМ КАЛЕНДАРЕМ БЕЗ ЛИШНИХ ПЛАШЕК) -->
+        <!-- ШАГ 2: ДАТА И ВРЕМЯ (АДАПТИВНЫЙ БЛОК ЧАСОВ) -->
         <section v-if="currentStep === 2" class="space-y-4">
           <div class="px-0.5">
             <h2 class="text-lg font-extrabold tracking-tight text-neutral-900">{{ t[currentLang].step2Title }}</h2>
@@ -1058,7 +1188,7 @@ const submitBooking = async () => {
             </p>
           </div>
 
-          <!-- Календарь -->
+          <!-- Сетка календаря -->
           <div class="bg-white p-4.5 rounded-[28px] border border-neutral-200/70 shadow-[0_1px_3px_rgba(0,0,0,0.03)] space-y-3">
             <div class="flex items-center justify-between pb-1">
               <div class="flex items-center gap-2">
@@ -1094,7 +1224,6 @@ const submitBooking = async () => {
               <span>Пн</span><span>Вт</span><span>Ср</span><span>Чт</span><span>Пт</span><span class="text-rose-500">Сб</span><span class="text-rose-500">Вс</span>
             </div>
 
-            <!-- Нерабочие и прошедшие дни заблокированы и некликабельны -->
             <div class="grid grid-cols-7 gap-1.5 text-center text-xs font-semibold">
               <span v-for="empty in firstDayOffset" :key="'e-' + empty" class="text-transparent select-none">•</span>
               <button 
@@ -1105,9 +1234,9 @@ const submitBooking = async () => {
                 :class="[
                   'h-10 w-full rounded-2xl flex items-center justify-center transition-all font-bold text-xs',
                   isDateClosed(d)
-                    ? 'text-neutral-300 line-through bg-neutral-50/40 cursor-not-allowed opacity-30 select-none pointer-events-none'
+                    ? 'text-neutral-300 line-through bg-neutral-50/40 cursor-not-allowed pointer-events-none opacity-30 select-none'
                     : (monthOffset === 0 && d < todayDate)
-                      ? 'text-neutral-300 cursor-not-allowed select-none pointer-events-none'
+                      ? 'text-neutral-300 cursor-not-allowed pointer-events-none select-none'
                       : selectedDay === d
                         ? 'bg-neutral-900 text-white shadow-xs'
                         : 'text-neutral-800 hover:bg-neutral-100'
@@ -1122,7 +1251,7 @@ const submitBooking = async () => {
           <div class="bg-white p-4.5 rounded-[28px] border border-neutral-200/70 shadow-[0_1px_3px_rgba(0,0,0,0.03)] space-y-3">
             <div class="flex justify-between items-baseline">
               <label class="font-extrabold text-neutral-900 text-sm block">{{ t[currentLang].entryTime }}</label>
-              <span class="text-[11px] text-neutral-400 font-medium">
+              <span class="text-[11px] text-neutral-400 font-medium truncate">
                 {{ isWeekendDay 
                     ? (currentBanya?.workingHours_kz || '12:00 - 00:00') 
                     : (currentBanya?.workingHours_ru || '10:00 - 22:00') 
@@ -1148,13 +1277,83 @@ const submitBooking = async () => {
             </p>
           </div>
 
-          <!-- Длительность и действующий тариф дня -->
-          <div class="bg-white p-4.5 rounded-[28px] border border-neutral-200/70 shadow-[0_1px_3px_rgba(0,0,0,0.03)] space-y-3">
+          <!-- Адаптивный блок длительности под тариф зала -->
+          
+          <!-- Вариант 1: ТАРИФ ДЕНЬ (без путающих кнопок часов) -->
+          <div v-if="roomPricingType === 'daily'" class="bg-white p-4.5 rounded-[28px] border border-neutral-200/70 shadow-[0_1px_3px_rgba(0,0,0,0.03)] space-y-2.5">
+            <div class="flex items-center justify-between">
+              <span class="font-extrabold text-neutral-900 text-sm">{{ t[currentLang].dailyDurationTitle }}</span>
+              <span class="px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200/60 text-xs font-extrabold">
+                {{ t[currentLang].dailyBadge }}
+              </span>
+            </div>
+            <p class="text-xs text-neutral-500 font-medium leading-relaxed">
+              {{ t[currentLang].dailyNote }}
+            </p>
+          </div>
+
+          <!-- Вариант 2: ТАРИФ ПАКЕТ (четко показан базовый пакет и часы продления) -->
+          <div v-else-if="roomPricingType === 'package'" class="bg-white p-4.5 rounded-[28px] border border-neutral-200/70 shadow-[0_1px_3px_rgba(0,0,0,0.03)] space-y-3">
+            <div class="flex justify-between items-baseline">
+              <div>
+                <label class="font-extrabold text-neutral-900 text-sm block">{{ t[currentLang].duration }}</label>
+                <p class="text-[11px] text-neutral-400 font-medium">{{ t[currentLang].packageDurationNote }}</p>
+              </div>
+              <button 
+                @click="isCustomDuration = !isCustomDuration" 
+                class="text-xs font-bold text-neutral-900 underline underline-offset-4 decoration-neutral-300 hover:decoration-neutral-900"
+              >
+                {{ isCustomDuration ? t[currentLang].chooseFromList : t[currentLang].customDuration }}
+              </button>
+            </div>
+
+            <div v-if="!isCustomDuration" class="grid grid-cols-4 gap-2">
+              <button 
+                v-for="h in presetDurations" 
+                :key="h"
+                @click="durationHours = h"
+                :class="[
+                  'py-3.5 rounded-2xl text-xs font-extrabold transition-all border font-mono flex flex-col items-center justify-center gap-0.5',
+                  durationHours === h 
+                    ? 'bg-neutral-900 text-white border-neutral-900 shadow-xs' 
+                    : 'bg-neutral-50 text-neutral-700 border-neutral-200/60 hover:bg-neutral-100'
+                ]"
+              >
+                <span>{{ h }} {{ t[currentLang].hours }}</span>
+                <span class="text-[9px] font-sans font-bold" :class="durationHours === h ? 'text-neutral-300' : 'text-neutral-400'">
+                  {{ h === roomIncludedHours ? t[currentLang].packageBadge : `+${h - roomIncludedHours} ${t[currentLang].hours}` }}
+                </span>
+              </button>
+            </div>
+
+            <div v-else class="flex items-center justify-between p-3.5 bg-neutral-50 rounded-2xl border border-neutral-200/60">
+              <span class="text-xs font-semibold text-neutral-600">Количество часов:</span>
+              <div class="flex items-center gap-3">
+                <button 
+                  @click="durationHours > roomIncludedHours ? durationHours-- : null"
+                  :disabled="durationHours <= roomIncludedHours"
+                  class="w-9 h-9 rounded-2xl bg-white border border-neutral-300 font-bold flex items-center justify-center active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed text-neutral-700 shadow-2xs"
+                >
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19.5 12h-15"/></svg>
+                </button>
+                <span class="text-base font-black text-neutral-900 w-10 text-center font-mono">{{ durationHours }} {{ t[currentLang].hours }}</span>
+                <button 
+                  @click="durationHours < 24 ? durationHours++ : null"
+                  class="w-9 h-9 rounded-2xl bg-white border border-neutral-300 font-bold flex items-center justify-center active:scale-95 shadow-2xs text-neutral-700"
+                >
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Вариант 3: СТАНДАРТНЫЙ ПОЧАСОВОЙ ТАРИФ -->
+          <div v-else class="bg-white p-4.5 rounded-[28px] border border-neutral-200/70 shadow-[0_1px_3px_rgba(0,0,0,0.03)] space-y-3">
             <div class="flex justify-between items-baseline">
               <label class="font-extrabold text-neutral-900 text-sm block">{{ t[currentLang].duration }}</label>
               <button 
                 @click="isCustomDuration = !isCustomDuration" 
-                class="text-xs font-bold text-neutral-900 underline underline-offset-4 decoration-neutral-300 hover:decoration-neutral-900 transition-colors"
+                class="text-xs font-bold text-neutral-900 underline underline-offset-4 decoration-neutral-300 hover:decoration-neutral-900"
               >
                 {{ isCustomDuration ? t[currentLang].chooseFromList : t[currentLang].customDuration }}
               </button>
@@ -1178,8 +1377,9 @@ const submitBooking = async () => {
               <span class="text-xs font-semibold text-neutral-600">Количество часов:</span>
               <div class="flex items-center gap-3">
                 <button 
-                  @click="durationHours > (selectedRoom?.minHours || 1) ? durationHours-- : null"
-                  class="w-9 h-9 rounded-2xl bg-white border border-neutral-300 font-bold flex items-center justify-center active:scale-95 shadow-2xs text-neutral-700"
+                  @click="durationHours > roomIncludedHours ? durationHours-- : null"
+                  :disabled="durationHours <= roomIncludedHours"
+                  class="w-9 h-9 rounded-2xl bg-white border border-neutral-300 font-bold flex items-center justify-center active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed text-neutral-700 shadow-2xs"
                 >
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19.5 12h-15"/></svg>
                 </button>
@@ -1192,16 +1392,6 @@ const submitBooking = async () => {
                 </button>
               </div>
             </div>
-
-            <div class="pt-2 border-t border-neutral-100 flex items-center justify-between text-xs">
-              <span class="text-neutral-500 font-medium">{{ t[currentLang].tariffLabel }}</span>
-              <span 
-                :class="isWeekendDay ? 'bg-amber-50 text-amber-700 border-amber-200/60' : 'bg-neutral-100 text-neutral-700 border-neutral-200/60'"
-                class="font-bold px-2.5 py-1 rounded-xl border text-[11px]"
-              >
-                {{ isWeekendDay ? t[currentLang].tariffWeekend : t[currentLang].tariffWeekday }} ({{ activeHourlyRate.toLocaleString() }} ₸/{{ t[currentLang].hours }})
-              </span>
-            </div>
           </div>
         </section>
 
@@ -1212,7 +1402,7 @@ const submitBooking = async () => {
             <p class="text-xs text-neutral-500 mt-0.5">{{ t[currentLang].step3Subtitle }}</p>
           </div>
 
-          <!-- Блок гостей -->
+          <!-- Блок гостей со сквозной подсказкой правил доплаты -->
           <div class="bg-white p-4.5 rounded-[28px] border border-neutral-200/70 shadow-[0_1px_3px_rgba(0,0,0,0.03)] space-y-3">
             <div class="flex justify-between items-baseline">
               <span class="font-extrabold text-neutral-900 text-sm">{{ t[currentLang].guests }}</span>
@@ -1221,7 +1411,15 @@ const submitBooking = async () => {
               </span>
             </div>
 
-            <!-- Кнопки выбора гостей -->
+            <!-- Постоянная информационная подсказка о правиле доплаты -->
+            <div 
+              v-if="extraGuestHourlyRate > 0"
+              class="p-2.5 bg-neutral-50 rounded-xl border border-neutral-200/70 text-[11px] text-neutral-600 flex items-center justify-between"
+            >
+              <span>В стоимость включено: <b>до {{ selectedRoom?.capacity || 2 }} чел</b></span>
+              <span class="font-bold text-neutral-900 font-mono">+{{ extraGuestHourlyRate.toLocaleString() }} ₸/чел/ч</span>
+            </div>
+
             <div class="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
               <button 
                 v-for="num in guestOptions" 
@@ -1238,21 +1436,22 @@ const submitBooking = async () => {
               </button>
             </div>
 
-            <!-- Доплата за экстра-гостей -->
+            <!-- Контрастный блок доплаты, если выбрано больше базовой нормы -->
             <div 
-              v-if="extraGuestsCount > 0 && selectedRoom?.extraGuestPricePerHour" 
-              class="p-2.5 bg-amber-50/70 border border-amber-200/60 rounded-xl flex items-center justify-between text-[11px]"
+              v-if="extraGuestsCount > 0 && extraGuestHourlyRate > 0" 
+              class="p-3 bg-amber-50/90 border border-amber-200 rounded-xl space-y-1 text-xs"
             >
-              <span class="text-amber-900 font-medium">
-                {{ t[currentLang].extraGuestsSurcharge }} (+{{ extraGuestsCount }} чел):
-              </span>
-              <span class="font-bold text-amber-950 font-mono">
-                +{{ extraGuestsPriceTotal.toLocaleString() }} ₸ ({{ Number(selectedRoom.extraGuestPricePerHour).toLocaleString() }} ₸/час)
-              </span>
+              <div class="flex items-center justify-between font-bold text-amber-900">
+                <span>{{ t[currentLang].extraGuestsSurcharge }} (+{{ extraGuestsCount }} чел):</span>
+                <span class="font-mono text-sm">+{{ extraGuestsPriceTotal.toLocaleString() }} ₸</span>
+              </div>
+              <p class="text-[11px] text-amber-800/80 font-medium">
+                Расчет: {{ extraGuestsCount }} доп. гостя × {{ extraGuestHourlyRate.toLocaleString() }} ₸ × {{ durationHours }} ч
+              </p>
             </div>
           </div>
 
-          <!-- Банные принадлежности (скрыты, если список пуст) -->
+          <!-- Банные принадлежности -->
           <div 
             v-if="banyaExtras.length > 0" 
             class="bg-white p-4.5 rounded-[28px] border border-neutral-200/70 shadow-[0_1px_3px_rgba(0,0,0,0.03)] space-y-3"
@@ -1424,7 +1623,7 @@ const submitBooking = async () => {
 
       </main>
 
-      <!-- Нижний бар с итогом -->
+      <!-- Нижний фиксированный бар -->
       <footer class="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white/95 backdrop-blur-xl border-t border-neutral-200/70 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] z-40 shadow-[0_-4px_20px_rgba(0,0,0,0.03)]">
         <div v-if="currentStep === 1" class="flex items-center gap-3">
           <div class="flex-1 min-w-0">
@@ -1517,6 +1716,7 @@ const submitBooking = async () => {
             </p>
           </div>
 
+          <!-- Детализация брони в модалке -->
           <div class="bg-neutral-50 rounded-2xl p-4 text-left text-xs space-y-2 border border-neutral-200/60 font-medium">
             <div class="flex justify-between">
               <span class="text-neutral-400">{{ t[currentLang].msgHall }}:</span>
@@ -1527,21 +1727,39 @@ const submitBooking = async () => {
               <span class="font-bold text-neutral-800">{{ selectedDay }} {{ monthNames[currentLang][viewMonth] }}, {{ bookingTime }}</span>
             </div>
             <div class="flex justify-between">
+              <span class="text-neutral-400">{{ t[currentLang].duration }}:</span>
+              <span class="font-bold text-neutral-800">
+                {{ roomPricingType === 'daily' ? 'Весь день' : `${durationHours} ${t[currentLang].hours}` }}
+              </span>
+            </div>
+            <div class="flex justify-between">
               <span class="text-neutral-400">{{ t[currentLang].guests }}:</span>
               <span class="font-bold text-neutral-800">{{ guestsCount }} чел.</span>
             </div>
 
-            <div v-if="extraGuestsCount > 0" class="flex justify-between text-amber-900">
-              <span>Доп. гости (+{{ extraGuestsCount }}):</span>
-              <span class="font-bold font-mono">+{{ extraGuestsPriceTotal.toLocaleString() }} ₸</span>
+            <!-- Детали стоимости аренды -->
+            <div class="pt-1.5 border-t border-neutral-200/40 space-y-1">
+              <div class="flex justify-between text-neutral-600">
+                <span>{{ t[currentLang].baseRentIncluded }}:</span>
+                <span class="font-mono font-bold">{{ activeBasePackagePrice.toLocaleString() }} ₸</span>
+              </div>
+              <div v-if="extraHoursCount > 0" class="flex justify-between text-neutral-600">
+                <span>{{ t[currentLang].extensionSurcharge }} (+{{ extraHoursCount }} ч):</span>
+                <span class="font-mono font-bold">+{{ extraHoursPriceTotal.toLocaleString() }} ₸</span>
+              </div>
+              <div v-if="extraGuestsCount > 0" class="flex justify-between text-amber-800">
+                <span>{{ t[currentLang].extraGuestsSurcharge }} (+{{ extraGuestsCount }} чел):</span>
+                <span class="font-mono font-bold">+{{ extraGuestsPriceTotal.toLocaleString() }} ₸</span>
+              </div>
             </div>
 
-            <div v-if="banyaExtras.length > 0 && selectedExtrasText !== t[currentLang].none" class="flex justify-between items-start pt-1 border-t border-neutral-200/40">
+            <!-- Доп. товары -->
+            <div v-if="banyaExtras.length > 0 && selectedExtrasText !== t[currentLang].none" class="flex justify-between items-start pt-1.5 border-t border-neutral-200/40">
               <span class="text-neutral-400 shrink-0">Доп. товары:</span>
               <span class="font-semibold text-neutral-700 text-right pl-2 leading-tight text-[11px]">{{ selectedExtrasText }}</span>
             </div>
 
-            <div v-if="hasDeposit" class="flex justify-between">
+            <div v-if="hasDeposit" class="flex justify-between pt-1 border-t border-neutral-200/40">
               <span class="text-neutral-400">Kaspi нөмірі:</span>
               <span class="font-bold font-mono text-neutral-800">{{ targetKaspiPhone }}</span>
             </div>
