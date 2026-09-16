@@ -225,14 +225,14 @@ const toggleRoom = (room: any) => {
   }
 }
 
-// При выборе зала подставляем номинальное количество гостей
+// При выборе зала подставляем номинальное число гостей
 watch(selectedRoom, (room) => {
   if (room) {
     guestsCount.value = room.capacity || 2
   }
 })
 
-// Генерация кнопок гостей под возможности зала (от 1 до maxCapacity)
+// Генерация кнопок гостей под лимит зала
 const guestOptions = computed(() => {
   const max = selectedRoom.value?.maxCapacity || selectedRoom.value?.capacity || 4
   const list: number[] = []
@@ -242,7 +242,7 @@ const guestOptions = computed(() => {
   return list
 })
 
-// Расчет дополнительных гостей сверх нормы
+// Дополнительные гости сверх нормы
 const extraGuestsCount = computed(() => {
   if (!selectedRoom.value) return 0
   const base = selectedRoom.value.capacity || 2
@@ -254,10 +254,10 @@ const extraGuestsPriceTotal = computed(() => {
   return extraGuestsCount.value * rate * durationHours.value
 })
 
-// Парсинг нерабочих дней недели комплекса (например, "1" для понедельника)
+// Нерабочие дни недели (0 - Вс, 1 - Пн, 2 - Вт, и т.д.)
 const disabledDaysOfWeek = computed<number[]>(() => {
   const raw = currentBanya.value?.closedDays
-  if (!raw && raw !== 0) return []
+  if (raw === undefined || raw === null || String(raw).trim() === '') return []
   return String(raw).split(',').map(d => parseInt(d.trim(), 10)).filter(d => !isNaN(d))
 })
 
@@ -266,9 +266,9 @@ const isDateClosed = (dayNumber: number): boolean => {
   return disabledDaysOfWeek.value.includes(dayOfWeek)
 }
 
-// Автоматический перенос выбора, если дата выпадает на нерабочий день
 const daysInMonth = computed(() => new Date(viewYear.value, viewMonth.value + 1, 0).getDate())
 
+// Автоматический перенос выбора, если число выпадает на выходной
 watch([viewMonth, viewYear, disabledDaysOfWeek], () => {
   if (isDateClosed(selectedDay.value)) {
     for (let d = 1; d <= daysInMonth.value; d++) {
@@ -280,7 +280,7 @@ watch([viewMonth, viewYear, disabledDaysOfWeek], () => {
   }
 }, { immediate: true })
 
-// Маска номера телефона
+// Телефонная маска
 const formatKZPhone = (val: string): string => {
   if (!val) return ''
   let digits = val.replace(/\D/g, '')
@@ -329,7 +329,7 @@ const getMediaUrl = (mediaObj: any) => {
   return url.startsWith('http') ? url : `${STRAPI_BASE_URL}${url}`
 }
 
-// Динамическое обновление favicon и Open Graph тегов
+// Динамический favicon и теги Open Graph
 const updateMetaAndFavicon = (banya: any) => {
   if (!banya) return
 
@@ -372,7 +372,7 @@ const updateMetaAndFavicon = (banya: any) => {
   setMeta('name', 'twitter:description', desc)
 }
 
-// Блокировка скролла под модалками
+// Блокировка фона при модалках
 const anyModalOpen = computed(() => isGalleryOpen.value || isVideoModalOpen.value || isSuccessModalOpen.value)
 
 watch(anyModalOpen, (isOpen) => {
@@ -578,7 +578,7 @@ const presetDurations = computed(() => {
   return [min, min + 1, min + 2, min + 3]
 })
 
-// Расчет суммы аренды: базовая аренда + доплата за дополнительных гостей
+// Финансовый расчет аренды зала
 const baseRentPrice = computed(() => activeHourlyRate.value * durationHours.value)
 const roomTotalPrice = computed(() => baseRentPrice.value + extraGuestsPriceTotal.value)
 
@@ -650,7 +650,6 @@ const submitBooking = async () => {
   const banyaRef = currentBanya.value?.documentId || currentBanya.value?.id
   const roomRef = selectedRoom.value?.documentId || selectedRoom.value?.id
 
-  // Подготовка списка доп. параметров для Telegram
   let extrasString = selectedExtrasText.value
   if (extraGuestsCount.value > 0) {
     const extraGuestsInfo = `Доп. гости: +${extraGuestsCount.value} чел (${extraGuestsPriceTotal.value.toLocaleString()} ₸)`
@@ -703,7 +702,7 @@ const submitBooking = async () => {
 <template>
   <div class="w-full max-w-md mx-auto min-h-screen flex flex-col relative pb-36 bg-[#F9FAFB] text-neutral-900 font-sans antialiased">
     
-    <!-- Индикатор загрузки -->
+    <!-- Загрузка -->
     <div v-if="isLoading" class="flex-1 flex items-center justify-center min-h-[70vh]">
       <div class="text-center space-y-3">
         <div class="w-8 h-8 border-[2.5px] border-neutral-900 border-t-transparent rounded-full animate-spin mx-auto"></div>
@@ -711,7 +710,7 @@ const submitBooking = async () => {
       </div>
     </div>
 
-    <!-- Ошибка загрузки -->
+    <!-- Ошибка -->
     <div v-else-if="loadError" class="flex-1 flex items-center justify-center min-h-[70vh] p-6 text-center">
       <div class="bg-white p-6 rounded-3xl border border-neutral-200/80 shadow-xs space-y-3 w-full">
         <div class="w-10 h-10 rounded-2xl bg-neutral-100 flex items-center justify-center mx-auto text-neutral-400">
@@ -727,10 +726,10 @@ const submitBooking = async () => {
       </div>
     </div>
 
-    <!-- Основной экран -->
+    <!-- Основной интерфейс -->
     <template v-else>
       
-      <!-- Верхняя панель -->
+      <!-- Верхний бар -->
       <header class="p-4 pt-5 sticky top-0 bg-[#F9FAFB]/90 backdrop-blur-xl z-30 space-y-3 border-b border-neutral-200/50">
         <div class="flex items-center justify-between">
           <button 
@@ -821,7 +820,7 @@ const submitBooking = async () => {
               </div>
             </div>
 
-            <!-- Быстрые действия -->
+            <!-- Кнопки связи -->
             <div class="grid grid-cols-4 gap-2 pt-2 border-t border-neutral-100">
               <a 
                 v-if="currentBanya?.whatsapp" 
@@ -866,7 +865,7 @@ const submitBooking = async () => {
             </div>
           </div>
 
-          <!-- Видеобаннеры без превью-картинок -->
+          <!-- Видеобаннеры -->
           <div v-if="banyaVideos.length > 0" class="space-y-2.5">
             <div class="flex items-center justify-between px-1">
               <div>
@@ -942,7 +941,7 @@ const submitBooking = async () => {
             </button>
           </div>
 
-          <!-- Карточки залов -->
+          <!-- Залы с тарифами -->
           <div class="space-y-4">
             <div 
               v-for="room in filteredRooms" 
@@ -994,7 +993,7 @@ const submitBooking = async () => {
                     {{ currentLang === 'kz' ? (room.name_kz || room.name_ru) : room.name_ru }}
                   </h3>
 
-                  <!-- Блок тарифов -->
+                  <!-- Блок цен -->
                   <div class="text-right">
                     <template v-if="room.pricePerHourWeekend && Number(room.pricePerHourWeekend) !== Number(room.pricePerHour)">
                       <div class="flex flex-col items-end">
@@ -1050,7 +1049,7 @@ const submitBooking = async () => {
           </div>
         </section>
 
-        <!-- ШАГ 2: ДАТА И ВРЕМЯ (С БЛОКИРОВКОЙ ВЫХОДНЫХ/САНИТАРНЫХ ДНЕЙ) -->
+        <!-- ШАГ 2: ДАТА И ВРЕМЯ (С ЧИСТЫМ КАЛЕНДАРЕМ БЕЗ ЛИШНИХ ПЛАШЕК) -->
         <section v-if="currentStep === 2" class="space-y-4">
           <div class="px-0.5">
             <h2 class="text-lg font-extrabold tracking-tight text-neutral-900">{{ t[currentLang].step2Title }}</h2>
@@ -1059,7 +1058,7 @@ const submitBooking = async () => {
             </p>
           </div>
 
-          <!-- Календарная сетка -->
+          <!-- Календарь -->
           <div class="bg-white p-4.5 rounded-[28px] border border-neutral-200/70 shadow-[0_1px_3px_rgba(0,0,0,0.03)] space-y-3">
             <div class="flex items-center justify-between pb-1">
               <div class="flex items-center gap-2">
@@ -1095,6 +1094,7 @@ const submitBooking = async () => {
               <span>Пн</span><span>Вт</span><span>Ср</span><span>Чт</span><span>Пт</span><span class="text-rose-500">Сб</span><span class="text-rose-500">Вс</span>
             </div>
 
+            <!-- Нерабочие и прошедшие дни заблокированы и некликабельны -->
             <div class="grid grid-cols-7 gap-1.5 text-center text-xs font-semibold">
               <span v-for="empty in firstDayOffset" :key="'e-' + empty" class="text-transparent select-none">•</span>
               <button 
@@ -1105,9 +1105,9 @@ const submitBooking = async () => {
                 :class="[
                   'h-10 w-full rounded-2xl flex items-center justify-center transition-all font-bold text-xs',
                   isDateClosed(d)
-                    ? 'text-neutral-300 line-through bg-neutral-50/40 cursor-not-allowed opacity-40 select-none'
+                    ? 'text-neutral-300 line-through bg-neutral-50/40 cursor-not-allowed opacity-30 select-none pointer-events-none'
                     : (monthOffset === 0 && d < todayDate)
-                      ? 'text-neutral-300 cursor-not-allowed select-none'
+                      ? 'text-neutral-300 cursor-not-allowed select-none pointer-events-none'
                       : selectedDay === d
                         ? 'bg-neutral-900 text-white shadow-xs'
                         : 'text-neutral-800 hover:bg-neutral-100'
@@ -1115,15 +1115,6 @@ const submitBooking = async () => {
               >
                 {{ d }}
               </button>
-            </div>
-
-            <!-- Бейдж санитарных/выходных дней -->
-            <div 
-              v-if="currentBanya?.closedDays !== undefined && currentBanya?.closedDays !== null && String(currentBanya?.closedDays).trim() !== ''" 
-              class="mt-2 p-2.5 bg-amber-50/80 border border-amber-200/70 rounded-xl flex items-center gap-2 text-[11px] text-amber-800 font-medium"
-            >
-              <svg class="w-4 h-4 text-amber-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
-              <span>{{ currentLang === 'kz' ? (currentBanya.closedDayReason_kz || currentBanya.closedDayReason_ru || 'Кешеннің демалыс күні') : (currentBanya.closedDayReason_ru || 'Санитарный / выходной день комплекса') }}</span>
             </div>
           </div>
 
@@ -1221,7 +1212,7 @@ const submitBooking = async () => {
             <p class="text-xs text-neutral-500 mt-0.5">{{ t[currentLang].step3Subtitle }}</p>
           </div>
 
-          <!-- Блок умного выбора гостей -->
+          <!-- Блок гостей -->
           <div class="bg-white p-4.5 rounded-[28px] border border-neutral-200/70 shadow-[0_1px_3px_rgba(0,0,0,0.03)] space-y-3">
             <div class="flex justify-between items-baseline">
               <span class="font-extrabold text-neutral-900 text-sm">{{ t[currentLang].guests }}</span>
@@ -1230,7 +1221,7 @@ const submitBooking = async () => {
               </span>
             </div>
 
-            <!-- Кнопки выбора, ограниченные залом -->
+            <!-- Кнопки выбора гостей -->
             <div class="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
               <button 
                 v-for="num in guestOptions" 
@@ -1247,7 +1238,7 @@ const submitBooking = async () => {
               </button>
             </div>
 
-            <!-- Доплата за экстра-гостей (если выбрано больше нормы) -->
+            <!-- Доплата за экстра-гостей -->
             <div 
               v-if="extraGuestsCount > 0 && selectedRoom?.extraGuestPricePerHour" 
               class="p-2.5 bg-amber-50/70 border border-amber-200/60 rounded-xl flex items-center justify-between text-[11px]"
@@ -1261,7 +1252,7 @@ const submitBooking = async () => {
             </div>
           </div>
 
-          <!-- Банные принадлежности (скрыты, если массив пуст) -->
+          <!-- Банные принадлежности (скрыты, если список пуст) -->
           <div 
             v-if="banyaExtras.length > 0" 
             class="bg-white p-4.5 rounded-[28px] border border-neutral-200/70 shadow-[0_1px_3px_rgba(0,0,0,0.03)] space-y-3"
@@ -1433,7 +1424,7 @@ const submitBooking = async () => {
 
       </main>
 
-      <!-- Нижний бар фиксации с итоговой стоимостью -->
+      <!-- Нижний бар с итогом -->
       <footer class="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white/95 backdrop-blur-xl border-t border-neutral-200/70 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] z-40 shadow-[0_-4px_20px_rgba(0,0,0,0.03)]">
         <div v-if="currentStep === 1" class="flex items-center gap-3">
           <div class="flex-1 min-w-0">
@@ -1545,7 +1536,6 @@ const submitBooking = async () => {
               <span class="font-bold font-mono">+{{ extraGuestsPriceTotal.toLocaleString() }} ₸</span>
             </div>
 
-            <!-- Доп. товары в чеке -->
             <div v-if="banyaExtras.length > 0 && selectedExtrasText !== t[currentLang].none" class="flex justify-between items-start pt-1 border-t border-neutral-200/40">
               <span class="text-neutral-400 shrink-0">Доп. товары:</span>
               <span class="font-semibold text-neutral-700 text-right pl-2 leading-tight text-[11px]">{{ selectedExtrasText }}</span>
